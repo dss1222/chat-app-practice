@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Simple Chat</title>
+    <style>
+        #chat-box {
+            width: 100%;
+            height: 300px;
+            border: 1px solid #ccc;
+            overflow-y: scroll;
+            margin-bottom: 10px;
+        }
+
+        #message {
+            width: 80%;
+        }
+    </style>
+</head>
+
+<body>
+    <h2>그룹 채팅</h2>
+    <label for="nickname">닉네임:</label>
+    <input type="text" id="nickname" placeholder="닉네임 입력">
+    <button onclick="connect()">입장</button>
+
+    <div id="chat-box"></div>
+
+    <input type="text" id="message" placeholder="메시지 입력">
+    <button onclick="sendMessage()">전송</button>
+
+    <script>
+        let socket = null;
+
+        function connect() {
+            const nickname = document.getElementById("nickname").value;
+            if (!nickname) {
+                alert("닉네임을 입력하세요!");
+                return;
+            }
+
+            socket = new WebSocket("ws://" + window.location.host + "/ws/chat");
+
+            socket.onopen = function () {
+                appendMessage("🔔 채팅방에 입장했습니다.");
+            };
+
+            socket.onmessage = function (event) {
+                appendMessage(event.data);
+            };
+
+            socket.onclose = function () {
+                appendMessage("🔕 연결이 종료되었습니다.");
+            };
+        }
+
+        function sendMessage() {
+            const messageBox = document.getElementById("message");
+            const nickname = document.getElementById("nickname").value;
+            const content = messageBox.value;
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.send(nickname + ": " + content);
+                messageBox.value = "";
+            }
+        }
+
+        function appendMessage(message) {
+            const chatBox = document.getElementById("chat-box");
+            chatBox.innerHTML += message + "<br>";
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+    </script>
+</body>
+
+</html>
