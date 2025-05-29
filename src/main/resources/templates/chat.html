@@ -16,6 +16,28 @@
         #message {
             width: 80%;
         }
+
+        #user-list {
+            list-style: none;
+            padding-left: 0;
+        }
+
+        #user-list li {
+            padding: 4px;
+        }
+
+        #main-container {
+            display: flex;
+            gap: 20px;
+        }
+
+        #chat-section {
+            flex: 3;
+        }
+
+        #user-section {
+            flex: 1;
+        }
     </style>
 </head>
 
@@ -25,16 +47,24 @@
     <input type="text" id="nickname" placeholder="닉네임 입력">
     <button onclick="connect()">입장</button>
 
-    <div id="chat-box"></div>
-
-    <input type="text" id="message" placeholder="메시지 입력">
-    <button onclick="sendMessage()">전송</button>
+    <div id="main-container">
+        <div id="chat-section">
+            <div id="chat-box"></div>
+            <input type="text" id="message" placeholder="메시지 입력">
+            <button onclick="sendMessage()">전송</button>
+        </div>
+        <div id="user-section">
+            <h4>접속 중인 유저</h4>
+            <ul id="user-list"></ul>
+        </div>
+    </div>
 
     <script>
         let socket = null;
+        let nickname = null;
 
         function connect() {
-            const nickname = document.getElementById("nickname").value;
+            nickname = document.getElementById("nickname").value;
             if (!nickname) {
                 alert("닉네임을 입력하세요!");
                 return;
@@ -43,11 +73,33 @@
             socket = new WebSocket("ws://" + window.location.host + "/ws/chat");
 
             socket.onopen = function () {
+                const enterMessage = {
+                    type: "ENTER",
+                    sender: nickname,
+                    message: ""
+                };
+                socket.send(JSON.stringify(enterMessage));
                 appendMessage("🔔 채팅방에 입장했습니다.");
             };
 
             socket.onmessage = function (event) {
-                appendMessage(event.data);
+                try {
+                    const data = JSON.parse(event.data);
+
+                    if (data.type === "USER_LIST") {
+                        const list = document.getElementById("user-list");
+                        list.innerHTML = "";
+                        data.users.forEach(user => {
+                            const li = document.createElement("li");
+                            li.textContent = user;
+                            list.appendChild(li);
+                        });
+                    } else {
+                        appendMessage(event.data); // fallback for non-JSON messages
+                    }
+                } catch {
+                    appendMessage(event.data); // plain text fallback
+                }
             };
 
             socket.onclose = function () {
@@ -57,10 +109,14 @@
 
         function sendMessage() {
             const messageBox = document.getElementById("message");
-            const nickname = document.getElementById("nickname").value;
             const content = messageBox.value;
-            if (socket && socket.readyState === WebSocket.OPEN) {
-                socket.send(nickname + ": " + content);
+            if (socket && socket.readyState === WebSocket.OPEN && content.trim() !== "") {
+                const chatMessage = {
+                    type: "CHAT",
+                    sender: nickname,
+                    message: content
+                };
+                socket.send(JSON.stringify(chatMessage));
                 messageBox.value = "";
             }
         }
@@ -70,6 +126,23 @@
             chatBox.innerHTML += message + "<br>";
             chatBox.scrollTop = chatBox.scrollHeight;
         }
+
+        // Enter 키 이벤트 추가
+        document.addEventListener("DOMContentLoaded", function () {
+            const nicknameInput = document.getElementById("nickname");
+            nicknameInput.addEventListener("keypress", function (e) {
+                if (e.key === "Enter") {
+                    connect();
+                }
+            });
+
+            const messageInput = document.getElementById("message");
+            messageInput.addEventListener("keypress", function (e) {
+                if (e.key === "Enter") {
+                    sendMessage();
+                }
+            });
+        });
     </script>
 </body>
 
