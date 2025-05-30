@@ -1,0 +1,10 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: chat-app
+
+jwt:
+  secret: MySuperSecretKeyMySuperSecretKey1234
+  expiration: 3600000  # 1시간 (밀리초 단위) 
