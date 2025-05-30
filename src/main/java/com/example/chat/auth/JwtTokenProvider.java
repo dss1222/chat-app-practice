@@ -2,6 +2,7 @@ package com.example.chat.auth;
 
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import jakarta.annotation.PostConstruct;
@@ -11,13 +12,17 @@ import java.util.Date;
 @Component
 public class JwtTokenProvider {
 
+    @Value("${jwt.secret:MySuperSecretKeyMySuperSecretKey1234}")
+    private String secretKeyString;
+
+    @Value("${jwt.expiration:3600000}")
+    private long validityInMilliseconds;
+
     private Key secretKey;
-    private final long validityInMilliseconds = 3600000; // 1시간
 
     @PostConstruct
     protected void init() {
-        // 간단한 고정 키 사용 (실제 서비스에서는 환경변수나 KeyStore 사용해야함)
-        secretKey = Keys.hmacShaKeyFor("MySuperSecretKeyMySuperSecretKey1234".getBytes());
+        secretKey = Keys.hmacShaKeyFor(secretKeyString.getBytes());
     }
 
     public String createToken(String username) {
@@ -38,17 +43,35 @@ public class JwtTokenProvider {
         try {
             Jwts.parserBuilder().setSigningKey(secretKey).build().parseClaimsJws(token);
             return true;
-        } catch (JwtException | IllegalArgumentException e) {
-            return false;
+        } catch (ExpiredJwtException e) {
+            throw new JwtAuthenticationException("Token has expired");
+        } catch (UnsupportedJwtException e) {
+            throw new JwtAuthenticationException("Unsupported JWT token");
+        } catch (MalformedJwtException e) {
+            throw new JwtAuthenticationException("Invalid JWT token");
+        } catch (SignatureException e) {
+            throw new JwtAuthenticationException("Invalid JWT signature");
+        } catch (IllegalArgumentException e) {
+            throw new JwtAuthenticationException("JWT claims string is empty");
         }
     }
 
     public String getUsername(String token) {
-        return Jwts.parserBuilder()
-                .setSigningKey(secretKey)
-                .build()
-                .parseClaimsJws(token)
-                .getBody()
-                .getSubject();
+        try {
+            return Jwts.parserBuilder()
+                    .setSigningKey(secretKey)
+                    .build()
+                    .parseClaimsJws(token)
+                    .getBody()
+                    .getSubject();
+        } catch (JwtException e) {
+            throw new JwtAuthenticationException("Failed to get username from token");
+        }
+    }
+}
+
+class JwtAuthenticationException extends RuntimeException {
+    public JwtAuthenticationException(String message) {
+        super(message);
     }
 }

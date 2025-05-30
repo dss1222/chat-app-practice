@@ -4,55 +4,21 @@
 <head>
     <meta charset="UTF-8">
     <title>Simple Chat</title>
-    <style>
-        #chat-box {
-            width: 100%;
-            height: 300px;
-            border: 1px solid #ccc;
-            overflow-y: scroll;
-            margin-bottom: 10px;
-        }
-
-        #message {
-            width: 80%;
-        }
-
-        #user-list {
-            list-style: none;
-            padding-left: 0;
-        }
-
-        #user-list li {
-            padding: 4px;
-        }
-
-        #main-container {
-            display: flex;
-            gap: 20px;
-        }
-
-        #chat-section {
-            flex: 3;
-        }
-
-        #user-section {
-            flex: 1;
-        }
-    </style>
+    <link rel="stylesheet" href="/css/chat.css">
 </head>
 
 <body>
     <h2>그룹 채팅</h2>
     <label for="nickname">닉네임:</label>
     <input type="text" id="nickname" placeholder="닉네임 입력">
-    <button onclick="getToken()">토큰 발급</button>
-    <button onclick="connect()">입장</button>
+    <button onclick="chatClient.getToken()">토큰 발급</button>
+    <button onclick="chatClient.connect()">입장</button>
 
     <div id="main-container">
         <div id="chat-section">
             <div id="chat-box"></div>
             <input type="text" id="message" placeholder="메시지 입력">
-            <button onclick="sendMessage()">전송</button>
+            <button onclick="chatClient.sendMessage()">전송</button>
         </div>
         <div id="user-section">
             <h4>접속 중인 유저</h4>
@@ -60,112 +26,7 @@
         </div>
     </div>
 
-    <script>
-        let socket = null;
-        let nickname = null;
-        let token = null;
-
-        function getToken() {
-            nickname = document.getElementById("nickname").value;
-            if (!nickname) {
-                alert("닉네임을 입력하세요!");
-                return;
-            }
-
-            fetch("/api/token?username=" + encodeURIComponent(nickname))
-                .then(response => response.text())
-                .then(data => {
-                    token = data;
-                    localStorage.setItem("access_token", token);
-                    alert("토큰 발급 완료!");
-                })
-                .catch(error => {
-                    console.error("토큰 발급 실패", error);
-                });
-        }
-
-        function connect() {
-            token = localStorage.getItem("access_token");
-
-            if (!token) {
-                alert("토큰이 없습니다! 먼저 토큰을 발급받아주세요!");
-                return;
-            }
-
-            socket = new WebSocket("ws://" + window.location.host + "/ws/chat");
-
-            socket.onopen = function () {
-                const enterMessage = {
-                    type: "ENTER",
-                    sender: nickname,
-                    message: token // 토큰을 여기로 보내
-                };
-                socket.send(JSON.stringify(enterMessage));
-            };
-
-
-            socket.onmessage = function (event) {
-                try {
-                    const data = JSON.parse(event.data);
-
-                    if (data.type === "USER_LIST") {
-                        const list = document.getElementById("user-list");
-                        list.innerHTML = "";
-                        data.users.forEach(user => {
-                            const li = document.createElement("li");
-                            li.textContent = user;
-                            list.appendChild(li);
-                        });
-                    } else {
-                        appendMessage(event.data);
-                    }
-                } catch {
-                    appendMessage(event.data);
-                }
-            };
-
-            socket.onclose = function () {
-                appendMessage("🔕 연결이 종료되었습니다.");
-            };
-        }
-
-        function sendMessage() {
-            const messageBox = document.getElementById("message");
-            const content = messageBox.value;
-            if (socket && socket.readyState === WebSocket.OPEN && content.trim() !== "") {
-                const chatMessage = {
-                    type: "CHAT",
-                    sender: nickname,
-                    message: content
-                };
-                socket.send(JSON.stringify(chatMessage));
-                messageBox.value = "";
-            }
-        }
-
-        function appendMessage(message) {
-            const chatBox = document.getElementById("chat-box");
-            chatBox.innerHTML += message + "<br>";
-            chatBox.scrollTop = chatBox.scrollHeight;
-        }
-
-        // Enter 키 이벤트 추가
-        document.addEventListener("DOMContentLoaded", function () {
-            const nicknameInput = document.getElementById("nickname");
-            nicknameInput.addEventListener("keypress", function (e) {
-                if (e.key === "Enter") {
-                    getToken(); // 닉네임 입력 후 Enter 치면 토큰 발급
-                }
-            });
-
-            const messageInput = document.getElementById("message");
-            messageInput.addEventListener("keypress", function (e) {
-                if (e.key === "Enter") {
-                    sendMessage();
-                }
-            });
-        });
-    </script>
+    <script src="/js/chat.js"></script>
 </body>
 
 </html>
