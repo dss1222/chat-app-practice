@@ -1,7 +1,8 @@
 package com.example.chat.controller;
 
-import com.example.chat.auth.JwtTokenProvider;
 import org.springframework.web.bind.annotation.*;
+
+import com.example.chat.utill.auth.JwtTokenProvider;
 
 @RestController
 @RequestMapping("/api")

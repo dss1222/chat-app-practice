@@ -1,4 +1,4 @@
-package com.example.chat.auth;
+package com.example.chat.utill.auth;
 
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
