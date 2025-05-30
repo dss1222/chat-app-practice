@@ -1,4 +1,4 @@
-package com.example.chat.constant;
+package com.example.chat.utill.constant;
 
 public final class ChatConstants {
     private ChatConstants() {

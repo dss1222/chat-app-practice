@@ -1,9 +1,10 @@
 package com.example.chat.handler;
 
-import com.example.chat.constant.ChatConstants;
 import com.example.chat.dto.ChatMessage;
-import com.example.chat.auth.JwtTokenProvider;
 import com.example.chat.service.ChatMessageService;
+import com.example.chat.utill.auth.JwtTokenProvider;
+import com.example.chat.utill.constant.ChatConstants;
+import com.example.chat.utill.redis.RedisPublisher;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.*;
@@ -22,10 +23,14 @@ public class WebSocketHandler extends TextWebSocketHandler {
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final JwtTokenProvider jwtTokenProvider;
     private final ChatMessageService chatMessageService;
+    private final RedisPublisher redisPublisher;
 
-    public WebSocketHandler(JwtTokenProvider jwtTokenProvider, ChatMessageService chatMessageService) {
+    private static final String CHANNEL = "chat"; // Redis 채널명
+
+    public WebSocketHandler(JwtTokenProvider jwtTokenProvider, ChatMessageService chatMessageService, RedisPublisher redisPublisher) {
         this.jwtTokenProvider = jwtTokenProvider;
         this.chatMessageService = chatMessageService;
+        this.redisPublisher = redisPublisher;
     }
 
     @Override
@@ -66,7 +71,12 @@ public class WebSocketHandler extends TextWebSocketHandler {
         authenticatedSessions.add(session.getId());
 
         System.out.println("✅ 인증 및 입장 성공: " + session.getId() + " 사용자: " + username);
-        broadcastMessage(chatMessageService.formatEnterMessage(username));
+
+        // ✅ 입장 메시지 Redis에 발행
+        String enterMessage = chatMessageService.formatEnterMessage(username);
+        redisPublisher.publish(CHANNEL, enterMessage);
+
+        // ✅ 유저 목록도 Redis에 발행
         broadcastUserList();
     }
 
@@ -89,15 +99,8 @@ public class WebSocketHandler extends TextWebSocketHandler {
             broadcastUserList();
         }
 
-        broadcastMessage(broadcastMessage);
-    }
-
-    private void broadcastMessage(String message) throws IOException {
-        for (WebSocketSession ws : sessions) {
-            if (ws.isOpen()) {
-                ws.sendMessage(new TextMessage(message));
-            }
-        }
+        // ✅ Redis로 발행
+        redisPublisher.publish(CHANNEL, broadcastMessage);
     }
 
     @Override
@@ -106,7 +109,8 @@ public class WebSocketHandler extends TextWebSocketHandler {
         authenticatedSessions.remove(session.getId());
         String nickname = sessionNicknames.remove(session.getId());
         if (nickname != null) {
-            broadcastMessage(chatMessageService.formatDisconnectMessage(nickname));
+            String disconnectMessage = chatMessageService.formatDisconnectMessage(nickname);
+            redisPublisher.publish(CHANNEL, disconnectMessage);
             broadcastUserList();
         }
         System.out.println("Session disconnected: " + session.getId());
@@ -116,9 +120,15 @@ public class WebSocketHandler extends TextWebSocketHandler {
         List<String> nicknames = new ArrayList<>(sessionNicknames.values());
         Map<String, Object> userListPayload = Map.of(
                 "type", ChatConstants.USER_LIST_TYPE,
-                "users", nicknames);
+                "users", nicknames
+        );
         String json = objectMapper.writeValueAsString(userListPayload);
-        broadcastMessage(json);
+        redisPublisher.publish(CHANNEL, json);
         System.out.println("[유저 목록] " + nicknames);
+    }
+
+    // 세션 접근을 위해 (RedisSubscriber에서 사용)
+    public Set<WebSocketSession> getSessions() {
+        return sessions;
     }
 }

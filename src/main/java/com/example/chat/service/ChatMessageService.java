@@ -1,7 +1,8 @@
 package com.example.chat.service;
 
-import com.example.chat.constant.ChatConstants;
 import com.example.chat.dto.ChatMessage;
+import com.example.chat.utill.constant.ChatConstants;
+
 import org.springframework.stereotype.Service;
 
 @Service
