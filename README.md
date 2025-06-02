@@ -1,4 +1,4 @@
-
+![image](https://github.com/user-attachments/assets/bf1c4d88-90dd-48f0-9564-28213a3380aa)
 # Chat Application (Server + SDK)
 
 ## 프로젝트 개요
@@ -11,6 +11,15 @@
 - **확장성**: Redis Pub/Sub 기반 서버 간 메시지 동기화 구조
 
 ---
+
+## 시연 화면
+![image](https://github.com/user-attachments/assets/0dcd4abc-8903-4927-a009-ad0dedfbceed)
+토큰 발급 및 입장 시 토큰 검증
+![image](https://github.com/user-attachments/assets/aabce595-9c81-4dd5-97b0-0771db0ba2d2)
+채팅방 입장 시 웹소켓 연결 유저 목록 노출
+![image](https://github.com/user-attachments/assets/28b59416-8c54-4b5e-9e4c-9b32c9c03353)
+연결 해제 시 채팅방 이탈 상태로 갱신
+
 
 ## 아키텍처
 
