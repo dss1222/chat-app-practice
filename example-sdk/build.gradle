@@ -1,0 +1,21 @@
+plugins {
+    id 'java'
+    id 'application'
+}
+
+group = 'com.example'
+version = '1.0.0'
+sourceCompatibility = '17'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation project(':chat-sdk')
+    implementation files('libs/chat-sdk-1.0.0.jar')
+}
+
+application {
+    mainClass = 'com.example.sdk.example.ExampleChatClient'
+} 

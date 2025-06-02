@@ -1,1 +1,3 @@
 rootProject.name = 'spring-chat-app'
+include 'chat-sdk'
+include 'example-sdk'
