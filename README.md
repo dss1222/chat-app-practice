@@ -1,4 +1,3 @@
-![image](https://github.com/user-attachments/assets/bf1c4d88-90dd-48f0-9564-28213a3380aa)
 # Chat Application (Server + SDK)
 
 ## 프로젝트 개요
