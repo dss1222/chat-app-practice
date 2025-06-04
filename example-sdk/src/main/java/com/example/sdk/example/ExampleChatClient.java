@@ -10,18 +10,16 @@ public class ExampleChatClient {
             // WebSocket 서버 URL, Token 발급 API URL 설정
             String serverUrl = "ws://localhost:8080/ws/chat";
             String tokenApiUrl = "http://localhost:8080/api/token";
+            String nickname = "example-user";
 
-            // ChatClient 인스턴스 생성
-            ChatClient chatClient = new ChatClient(serverUrl, tokenApiUrl);
-
-            // 닉네임 설정
-            chatClient.setNickname("example-user");
+            // ChatClient 인스턴스 생성 (nickname을 생성자에서 전달)
+            ChatClient chatClient = new ChatClient(serverUrl, tokenApiUrl, nickname);
 
             // 메시지 리스너 설정
             chatClient.setListener(new ChatListener() {
                 @Override
                 public void onMessage(ChatMessage message) {
-                    System.out.println("받은 메시지: " + message.getSender() + ": " + message.getMessage());
+                    System.out.println("받은 메시지: " + message.sender() + ": " + message.message());
                 }
             });
 
