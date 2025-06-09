@@ -22,7 +22,6 @@ public class RedisSubscriber implements MessageListener {
     @Override
     public void onMessage(Message message, byte[] pattern) {
         String channelMessage = new String(message.getBody(), StandardCharsets.UTF_8);
-        System.out.println("Redis 메시지 수신: " + channelMessage);
 
         Set<WebSocketSession> sessions = webSocketHandler.getSessions();
         for (WebSocketSession session : sessions) {

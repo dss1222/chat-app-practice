@@ -1,11 +1,15 @@
 package com.example.chat.handler;
 
 import com.example.chat.dto.ChatMessage;
+import com.example.chat.exception.AuthenticationException;
+import com.example.chat.exception.MessageProcessingException;
 import com.example.chat.service.ChatMessageService;
 import com.example.chat.utill.auth.JwtTokenProvider;
 import com.example.chat.utill.constant.ChatConstants;
 import com.example.chat.utill.redis.RedisPublisher;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.*;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
@@ -16,6 +20,11 @@ import java.io.IOException;
 
 @Component
 public class WebSocketHandler extends TextWebSocketHandler {
+    private static final Logger log = LoggerFactory.getLogger(WebSocketHandler.class);
+    private static final String CHANNEL = "chat";
+    private static final String ERROR_MESSAGE_PROCESSING = "메시지 처리 중 오류 발생";
+    private static final String ERROR_CONNECTION_CLOSED = "연결 종료 처리 중 오류 발생";
+    private static final String ERROR_USER_LIST_BROADCAST = "사용자 목록 브로드캐스트 중 오류 발생";
 
     private final Set<WebSocketSession> sessions = ConcurrentHashMap.newKeySet();
     private final Map<String, String> sessionNicknames = new ConcurrentHashMap<>();
@@ -25,9 +34,8 @@ public class WebSocketHandler extends TextWebSocketHandler {
     private final ChatMessageService chatMessageService;
     private final RedisPublisher redisPublisher;
 
-    private static final String CHANNEL = "chat"; // Redis 채널명
-
-    public WebSocketHandler(JwtTokenProvider jwtTokenProvider, ChatMessageService chatMessageService, RedisPublisher redisPublisher) {
+    public WebSocketHandler(JwtTokenProvider jwtTokenProvider, ChatMessageService chatMessageService,
+            RedisPublisher redisPublisher) {
         this.jwtTokenProvider = jwtTokenProvider;
         this.chatMessageService = chatMessageService;
         this.redisPublisher = redisPublisher;
@@ -36,98 +44,137 @@ public class WebSocketHandler extends TextWebSocketHandler {
     @Override
     public void afterConnectionEstablished(WebSocketSession session) {
         sessions.add(session);
-        System.out.println("New session connected (미인증 상태): " + session.getId());
     }
 
     @Override
     protected void handleTextMessage(WebSocketSession session, TextMessage message) throws Exception {
-        String payload = message.getPayload();
-        System.out.println("받은 메시지: " + payload);
+        try {
+            ChatMessage chatMessage = parseMessage(message.getPayload());
+            processMessage(session, chatMessage);
+        } catch (Exception e) {
+            log.error(ERROR_MESSAGE_PROCESSING, e);
+            throw new MessageProcessingException(ERROR_MESSAGE_PROCESSING, e);
+        }
+    }
 
-        ChatMessage chatMessage = objectMapper.readValue(payload, ChatMessage.class);
+    private ChatMessage parseMessage(String payload) throws IOException {
+        return objectMapper.readValue(payload, ChatMessage.class);
+    }
 
+    private void processMessage(WebSocketSession session, ChatMessage chatMessage) throws IOException {
         if (!authenticatedSessions.contains(session.getId())) {
             handleUnauthenticatedMessage(session, chatMessage);
             return;
         }
-
         handleAuthenticatedMessage(session, chatMessage);
     }
 
     private void handleUnauthenticatedMessage(WebSocketSession session, ChatMessage chatMessage) throws IOException {
-        if (chatMessage.type() != ChatMessage.MessageType.ENTER) {
-            System.out.println("❌ 인증 안 된 세션의 메시지. 연결 종료: " + session.getId());
-            session.close(CloseStatus.NOT_ACCEPTABLE.withReason("Unauthorized"));
-            return;
-        }
-
+        validateEnterMessage(chatMessage);
         String token = chatMessage.message();
+
         if (!validateAndAuthenticateToken(session, token)) {
             return;
         }
 
+        authenticateSession(session, token);
+    }
+
+    private void validateEnterMessage(ChatMessage chatMessage) {
+        if (chatMessage.type() != ChatMessage.MessageType.ENTER) {
+            throw new AuthenticationException("인증되지 않은 세션의 메시지");
+        }
+    }
+
+    private void authenticateSession(WebSocketSession session, String token) throws IOException {
         String username = jwtTokenProvider.getUsername(token);
         sessionNicknames.put(session.getId(), username);
         authenticatedSessions.add(session.getId());
 
-        System.out.println("✅ 인증 및 입장 성공: " + session.getId() + " 사용자: " + username);
-
-        // ✅ 입장 메시지 Redis에 발행
         String enterMessage = chatMessageService.formatEnterMessage(username);
         redisPublisher.publish(CHANNEL, enterMessage);
 
-        // ✅ 유저 목록도 Redis에 발행
         broadcastUserList();
     }
 
     private boolean validateAndAuthenticateToken(WebSocketSession session, String token) throws IOException {
-        if (token == null || !jwtTokenProvider.validateToken(token)) {
-            System.out.println("❌ 토큰 검증 실패. 연결 종료: " + session.getId());
-            session.close(CloseStatus.NOT_ACCEPTABLE.withReason("Invalid Token"));
+        try {
+            if (token == null || !jwtTokenProvider.validateToken(token)) {
+                throw new AuthenticationException("유효하지 않은 토큰");
+            }
+            return true;
+        } catch (AuthenticationException e) {
+            log.warn("❌ 토큰 검증 실패. 연결 종료: {} - {}", session.getId(), e.getMessage());
+            session.close(CloseStatus.NOT_ACCEPTABLE.withReason(e.getMessage()));
             return false;
         }
-        return true;
     }
 
     private void handleAuthenticatedMessage(WebSocketSession session, ChatMessage chatMessage) throws IOException {
-        String sender = sessionNicknames.get(session.getId());
+        String sender = getAuthenticatedSender(session);
         String broadcastMessage = chatMessageService.processMessage(chatMessage, sender);
 
         if (chatMessage.type() == ChatMessage.MessageType.LEAVE) {
-            sessionNicknames.remove(session.getId());
-            authenticatedSessions.remove(session.getId());
-            broadcastUserList();
+            handleUserLeave(session);
         }
 
-        // ✅ Redis로 발행
         redisPublisher.publish(CHANNEL, broadcastMessage);
+    }
+
+    private String getAuthenticatedSender(WebSocketSession session) {
+        String sender = sessionNicknames.get(session.getId());
+        if (sender == null) {
+            throw new AuthenticationException("인증된 세션이지만 발신자 정보가 없음");
+        }
+        return sender;
+    }
+
+    private void handleUserLeave(WebSocketSession session) {
+        sessionNicknames.remove(session.getId());
+        authenticatedSessions.remove(session.getId());
+        try {
+            broadcastUserList();
+        } catch (IOException e) {
+            log.error(ERROR_USER_LIST_BROADCAST, e);
+        }
     }
 
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) throws Exception {
+        try {
+            handleSessionClose(session);
+        } catch (Exception e) {
+            log.error(ERROR_CONNECTION_CLOSED, e);
+            throw new MessageProcessingException(ERROR_CONNECTION_CLOSED, e);
+        }
+    }
+
+    private void handleSessionClose(WebSocketSession session) throws IOException {
         sessions.remove(session);
         authenticatedSessions.remove(session.getId());
         String nickname = sessionNicknames.remove(session.getId());
+
         if (nickname != null) {
             String disconnectMessage = chatMessageService.formatDisconnectMessage(nickname);
             redisPublisher.publish(CHANNEL, disconnectMessage);
             broadcastUserList();
         }
-        System.out.println("Session disconnected: " + session.getId());
     }
 
     private void broadcastUserList() throws IOException {
-        List<String> nicknames = new ArrayList<>(sessionNicknames.values());
-        Map<String, Object> userListPayload = Map.of(
-                "type", ChatConstants.USER_LIST_TYPE,
-                "users", nicknames
-        );
-        String json = objectMapper.writeValueAsString(userListPayload);
-        redisPublisher.publish(CHANNEL, json);
-        System.out.println("[유저 목록] " + nicknames);
+        try {
+            List<String> nicknames = new ArrayList<>(sessionNicknames.values());
+            Map<String, Object> userListPayload = Map.of(
+                    "type", ChatConstants.USER_LIST_TYPE,
+                    "users", nicknames);
+            String json = objectMapper.writeValueAsString(userListPayload);
+            redisPublisher.publish(CHANNEL, json);
+        } catch (Exception e) {
+            log.error(ERROR_USER_LIST_BROADCAST, e);
+            throw new MessageProcessingException(ERROR_USER_LIST_BROADCAST, e);
+        }
     }
 
-    // 세션 접근을 위해 (RedisSubscriber에서 사용)
     public Set<WebSocketSession> getSessions() {
         return sessions;
     }

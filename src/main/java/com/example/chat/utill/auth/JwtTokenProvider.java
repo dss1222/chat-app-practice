@@ -1,7 +1,10 @@
 package com.example.chat.utill.auth;
 
+import com.example.chat.exception.AuthenticationException;
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -11,6 +14,7 @@ import java.util.Date;
 
 @Component
 public class JwtTokenProvider {
+    private static final Logger log = LoggerFactory.getLogger(JwtTokenProvider.class);
 
     @Value("${jwt.secret:MySuperSecretKeyMySuperSecretKey1234}")
     private String secretKeyString;
@@ -26,6 +30,7 @@ public class JwtTokenProvider {
     }
 
     public String createToken(String username) {
+        log.debug("Creating token for user: {}", username);
         Claims claims = Jwts.claims().setSubject(username);
 
         Date now = new Date();
@@ -42,17 +47,23 @@ public class JwtTokenProvider {
     public boolean validateToken(String token) {
         try {
             Jwts.parserBuilder().setSigningKey(secretKey).build().parseClaimsJws(token);
+            log.debug("Token validation successful");
             return true;
         } catch (ExpiredJwtException e) {
-            throw new JwtAuthenticationException("Token has expired");
+            log.warn("Token has expired");
+            throw new AuthenticationException("Token has expired");
         } catch (UnsupportedJwtException e) {
-            throw new JwtAuthenticationException("Unsupported JWT token");
+            log.warn("Unsupported JWT token");
+            throw new AuthenticationException("Unsupported JWT token");
         } catch (MalformedJwtException e) {
-            throw new JwtAuthenticationException("Invalid JWT token");
+            log.warn("Invalid JWT token");
+            throw new AuthenticationException("Invalid JWT token");
         } catch (SignatureException e) {
-            throw new JwtAuthenticationException("Invalid JWT signature");
+            log.warn("Invalid JWT signature");
+            throw new AuthenticationException("Invalid JWT signature");
         } catch (IllegalArgumentException e) {
-            throw new JwtAuthenticationException("JWT claims string is empty");
+            log.warn("JWT claims string is empty");
+            throw new AuthenticationException("JWT claims string is empty");
         }
     }
 
@@ -65,13 +76,8 @@ public class JwtTokenProvider {
                     .getBody()
                     .getSubject();
         } catch (JwtException e) {
-            throw new JwtAuthenticationException("Failed to get username from token");
+            log.error("Failed to get username from token", e);
+            throw new AuthenticationException("Failed to get username from token", e);
         }
-    }
-}
-
-class JwtAuthenticationException extends RuntimeException {
-    public JwtAuthenticationException(String message) {
-        super(message);
     }
 }
